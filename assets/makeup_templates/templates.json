@@ -1,0 +1,26 @@
+[
+  {
+    "id": "everyday_01",
+    "name": "日常淡妆",
+    "category": "日常",
+    "file": "everyday/01.png"
+  },
+  {
+    "id": "everyday_02",
+    "name": "清新自然妆",
+    "category": "日常",
+    "file": "everyday/02.png"
+  },
+  {
+    "id": "korean_01",
+    "name": "韩系裸妆",
+    "category": "韩系",
+    "file": "korean/01.png"
+  },
+  {
+    "id": "party_01",
+    "name": "晚宴浓妆",
+    "category": "晚宴",
+    "file": "party/01.png"
+  }
+]

@@ -4,6 +4,8 @@
 
 本项目是一个完整的"人脸美化系统"，采用模块化设计，便于初学者理解和维护。每个模块职责清晰，代码注释详细。
 
+> 注意：项目中原有的顶层脚本 `mainbGAN.py` 已移除，相关妆造迁移功能已封装为 `modules/beautygan.py`，并通过 GUI 集成。
+
 ## 架构设计原则
 
 1. **模块化**：功能分离，每个模块负责特定任务
@@ -99,6 +101,11 @@ if __name__ == "__main__":  # 确保只在直接运行时启动
 - `skin_softening()`: 肤色柔和处理
 - `global_contrast_enhancement()`: 全图对比度增强
 - `eye_enhancement()`: 眼部亮度提升
+
+### 8. modules/beautygan.py - 妆造迁移（BeautyGAN）
+**职责**：实现无妆人脸与妆容图片的妆造迁移
+**关键函数**：
+- `beautygan_transfer(no_makeup_img, makeup_img)`: 输入两张图片，输出迁移后图片
 
 ## 数据流向
 
