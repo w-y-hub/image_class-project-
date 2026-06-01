@@ -1,4 +1,4 @@
-from modules import filters, face_detection, beauty, beautygan
+from modules import filters, face_detection, beauty
 
 
 def apply_operation(
@@ -9,6 +9,9 @@ def apply_operation(
     contrast=1.2,
     softness=0.5,
     eye_enhance=0.3,
+    canny_low=50,
+    canny_high=150,
+    clahe_clip=2.0,
     makeup_image=None,
     makeup_path=None,
 ):
@@ -68,7 +71,7 @@ def apply_operation(
         return filters.histogram_equalization(image)
 
     elif op == "clahe":
-        return filters.clahe_equalization(image)
+        return filters.clahe_equalization(image, clip_limit=clahe_clip)
 
     elif op == "laplacian":
         return filters.laplacian_sharpen(image)
@@ -84,7 +87,7 @@ def apply_operation(
         return filters.sobel_filter(image)
 
     elif op == "canny":
-        return filters.canny_edge(image, threshold1=100, threshold2=200)
+        return filters.canny_edge(image, threshold1=canny_low, threshold2=canny_high)
 
     elif op == "erode":
         return filters.erode(image, blur_strength)
@@ -129,12 +132,14 @@ def apply_operation(
         return beauty.eye_enhancement(image, faces, eye_enhance)
 
     elif op == "beautygan":
+        # 懒加载：只有选择 BeautyGAN 时才导入 tensorflow
+        from modules import beautygan
+
         # 同时兼容 makeup_image 和 makeup_path
         makeup_ref = makeup_image if makeup_image is not None else makeup_path
         if makeup_ref is None:
             raise ValueError("未提供妆容参考图")
 
-        # 根据你的 beautygan.py，优先调用 beautygan_transfer
         return beautygan.beautygan_transfer(image, makeup_ref)
 
     else:

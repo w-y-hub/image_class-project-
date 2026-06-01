@@ -1,8 +1,16 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox
 from PIL import ImageTk
 
 from modules import image_io, utils, services, template_manager
+from modules.text_renderer import (
+    make_label,
+    make_button,
+    make_radio,
+    make_option_menu,
+    make_label_frame,
+    render_photo,
+)
 
 
 class FaceBeautyApp:
@@ -10,6 +18,7 @@ class FaceBeautyApp:
         # 初始化主窗口
         self.root = root
         self.root.title("人脸美化系统")
+
         self.root.geometry("1280x720")
         self.root.minsize(1100, 650)
 
@@ -27,6 +36,9 @@ class FaceBeautyApp:
         self.contrast = tk.DoubleVar(value=1.2)
         self.softness = tk.DoubleVar(value=0.5)
         self.eye_enhance = tk.DoubleVar(value=0.3)
+        self.canny_low = tk.IntVar(value=50)
+        self.canny_high = tk.IntVar(value=150)
+        self.clahe_clip = tk.DoubleVar(value=2.0)
 
         # 妆造模板相关
         self.templates = template_manager.load_templates()
@@ -79,21 +91,26 @@ class FaceBeautyApp:
 
         control_frame = self.control_inner
 
-        # ===== 基本操作区 =====
-        action_frame = tk.LabelFrame(control_frame, text="基本操作", padx=8, pady=8)
+        # ===== 基本操作区（LabelFrame 替换为 Frame + 渲染标题）=====
+        action_frame, _ = make_label_frame(control_frame, "基本操作",
+                                           relief=tk.GROOVE, bd=2, padx=8, pady=12)
         action_frame.pack(fill=tk.X, pady=6)
 
-        tk.Button(action_frame, text="加载图片", width=16, command=self.load_image).grid(row=0, column=0, padx=5, pady=5)
-        tk.Button(action_frame, text="保存结果", width=16, command=self.save_image).grid(row=0, column=1, padx=5, pady=5)
-        tk.Button(action_frame, text="重置图像", width=16, command=self.reset_image).grid(row=1, column=0, padx=5, pady=5)
-        tk.Button(action_frame, text="执行处理", width=16, command=self.apply_operation, bg="#4CAF50", fg="white").grid(
-            row=1, column=1, padx=5, pady=5
-        )
+        make_button(action_frame, "加载图片", self.load_image,
+                    width=120, height=28).grid(row=0, column=0, padx=5, pady=4)
+        make_button(action_frame, "保存结果", self.save_image,
+                    width=120, height=28).grid(row=0, column=1, padx=5, pady=4)
+        make_button(action_frame, "重置图像", self.reset_image,
+                    width=120, height=28).grid(row=1, column=0, padx=5, pady=4)
+        make_button(action_frame, "执行处理", self.apply_operation,
+                    width=120, height=28, bg="#4CAF50").grid(row=1, column=1, padx=5, pady=4)
 
         # ===== 功能选择区 =====
-        op_frame = tk.LabelFrame(control_frame, text="功能选择", padx=8, pady=8)
+        op_frame, _ = make_label_frame(control_frame, "功能选择",
+                                       relief=tk.GROOVE, bd=2, padx=8, pady=12)
         op_frame.pack(fill=tk.X, pady=6)
 
+        self._operation_radios = []  # 保持引用
         operations = [
             ("无处理", "none"),
             ("均值滤波", "mean"),
@@ -121,114 +138,169 @@ class FaceBeautyApp:
         for i, (text, value) in enumerate(operations):
             r = i // 2
             c = i % 2
-            tk.Radiobutton(
-                op_frame,
-                text=text,
-                variable=self.operation,
-                value=value,
-                anchor="w",
-                justify=tk.LEFT
-            ).grid(row=r, column=c, sticky="w", padx=5, pady=2)
+            rb = make_radio(op_frame, text, self.operation, value)
+            rb.grid(row=r, column=c, sticky="w", padx=5, pady=2)
+            self._operation_radios.append(rb)
 
         # ===== BeautyGAN模板区 =====
-        template_frame = tk.LabelFrame(control_frame, text="妆造模板设置", padx=8, pady=8)
+        template_frame, _ = make_label_frame(control_frame, "妆造模板设置",
+                                             relief=tk.GROOVE, bd=2, padx=8, pady=12)
         template_frame.pack(fill=tk.X, pady=6)
 
-        tk.Radiobutton(
-            template_frame,
-            text="使用内置模板",
-            variable=self.makeup_source,
-            value="builtin",
-            command=self._update_template_preview
-        ).pack(anchor=tk.W)
+        make_radio(template_frame, "使用内置模板", self.makeup_source,
+                   "builtin").pack(anchor=tk.W)
+        make_radio(template_frame, "使用自定义模板", self.makeup_source,
+                   "custom").pack(anchor=tk.W)
 
-        tk.Radiobutton(
-            template_frame,
-            text="使用自定义模板",
-            variable=self.makeup_source,
-            value="custom",
-            command=self._update_template_preview
-        ).pack(anchor=tk.W)
-
-        tk.Label(template_frame, text="内置模板：").pack(anchor=tk.W, pady=(8, 0))
+        make_label(template_frame, "内置模板：", fg="#333333").pack(anchor=tk.W, pady=(8, 0))
         template_names = [tpl["name"] for tpl in self.templates] if self.templates else []
 
-        self.template_combo = ttk.Combobox(
-            template_frame,
-            textvariable=self.template_name,
-            values=template_names,
-            state="readonly"
+        self.template_combo = make_option_menu(
+            template_frame, template_names, self.template_name, width=180
         )
         self.template_combo.pack(fill=tk.X, pady=4)
-        self.template_combo.bind("<<ComboboxSelected>>", self.on_template_selected)
 
-        tk.Button(
-            template_frame,
-            text="选择自定义模板",
-            command=self.select_custom_template
-        ).pack(fill=tk.X, pady=6)
+        make_button(template_frame, "选择自定义模板", self.select_custom_template,
+                    width=180, height=28, bg="#2196F3").pack(fill=tk.X, pady=6)
 
-        self.template_info_label = tk.Label(
-            template_frame,
-            text="当前：内置模板",
-            fg="blue",
-            justify=tk.LEFT,
-            anchor="w",
-            wraplength=260
+        self.template_info_label = make_label(
+            template_frame, "当前：内置模板", fg="#0000FF", pad_w=2, pad_h=2,
+            wraplength=260, anchor="w"
         )
         self.template_info_label.pack(fill=tk.X, pady=(4, 4))
 
         self.template_preview_label = tk.Label(
             template_frame,
-            text="模板预览区",
-            bd=1,
-            relief=tk.SUNKEN,
-            width=18,
-            height=10
+            bd=1, relief=tk.SUNKEN,
+            width=18, height=10
         )
         self.template_preview_label.pack(pady=6)
+        # 初始文字用渲染图片
+        _ph, _, _ = render_photo("模板预览区", fg="#999999")
+        self.template_preview_label.configure(image=_ph)
+        self._template_placeholder = _ph
 
-        # ===== 参数调整区 =====
-        param_frame = tk.LabelFrame(control_frame, text="参数调整", padx=8, pady=8)
+        # ===== 参数调整区（根据所选操作动态显示）=====
+        param_frame, _ = make_label_frame(control_frame, "参数调整",
+                                          relief=tk.GROOVE, bd=2, padx=8, pady=12)
         param_frame.pack(fill=tk.X, pady=6)
+        self._param_frame = param_frame
 
-        tk.Label(param_frame, text="模糊/磨皮强度：").pack(anchor=tk.W, pady=(4, 0))
-        tk.Scale(param_frame, from_=1, to=31, orient=tk.HORIZONTAL, variable=self.blur_strength).pack(fill=tk.X)
+        # 每个参数用一个 Frame 包裹（label + scale），以便整体 show/hide
+        # 模糊/磨皮强度（操作不同，标签不同）
+        self._param_blur = tk.Frame(param_frame)
+        self._lbl_blur = make_label(self._param_blur, "滤波核大小：", fg="#333333")
+        self._lbl_blur.pack(anchor=tk.W, pady=(4, 0))
+        tk.Scale(self._param_blur, from_=1, to=31, orient=tk.HORIZONTAL,
+                 variable=self.blur_strength).pack(fill=tk.X)
 
-        tk.Label(param_frame, text="亮度调整：").pack(anchor=tk.W, pady=(8, 0))
-        tk.Scale(param_frame, from_=-50, to=50, orient=tk.HORIZONTAL, variable=self.brightness).pack(fill=tk.X)
+        # 亮度调整
+        self._param_bright = tk.Frame(param_frame)
+        self._lbl_bright = make_label(self._param_bright, "亮度偏移：", fg="#333333")
+        self._lbl_bright.pack(anchor=tk.W, pady=(8, 0))
+        tk.Scale(self._param_bright, from_=-50, to=50, orient=tk.HORIZONTAL,
+                 variable=self.brightness).pack(fill=tk.X)
 
-        tk.Label(param_frame, text="对比度：").pack(anchor=tk.W, pady=(8, 0))
-        tk.Scale(
-            param_frame,
-            from_=0.5,
-            to=2.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=self.contrast
-        ).pack(fill=tk.X)
+        # 对比度
+        self._param_contrast = tk.Frame(param_frame)
+        self._lbl_contrast = make_label(self._param_contrast, "对比度系数：", fg="#333333")
+        self._lbl_contrast.pack(anchor=tk.W, pady=(8, 0))
+        tk.Scale(self._param_contrast, from_=0.5, to=2.0, resolution=0.1,
+                 orient=tk.HORIZONTAL, variable=self.contrast).pack(fill=tk.X)
 
-        tk.Label(param_frame, text="柔和度：").pack(anchor=tk.W, pady=(8, 0))
-        tk.Scale(
-            param_frame,
-            from_=0.0,
-            to=1.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=self.softness
-        ).pack(fill=tk.X)
+        # 柔和度
+        self._param_soft = tk.Frame(param_frame)
+        self._lbl_soft = make_label(self._param_soft, "柔和度：", fg="#333333")
+        self._lbl_soft.pack(anchor=tk.W, pady=(8, 0))
+        tk.Scale(self._param_soft, from_=0.0, to=1.0, resolution=0.1,
+                 orient=tk.HORIZONTAL, variable=self.softness).pack(fill=tk.X)
 
-        tk.Label(param_frame, text="眼部增强：").pack(anchor=tk.W, pady=(8, 0))
-        tk.Scale(
-            param_frame,
-            from_=0.0,
-            to=1.0,
-            resolution=0.1,
-            orient=tk.HORIZONTAL,
-            variable=self.eye_enhance
-        ).pack(fill=tk.X)
+        # 眼部增强
+        self._param_eye = tk.Frame(param_frame)
+        self._lbl_eye = make_label(self._param_eye, "眼部增强：", fg="#333333")
+        self._lbl_eye.pack(anchor=tk.W, pady=(8, 0))
+        tk.Scale(self._param_eye, from_=0.0, to=1.0, resolution=0.1,
+                 orient=tk.HORIZONTAL, variable=self.eye_enhance).pack(fill=tk.X)
 
-        # 底部留白，避免滚动到底时太贴边
+        # Canny 低阈值
+        self._param_canny_low = tk.Frame(param_frame)
+        self._lbl_canny_low = make_label(self._param_canny_low, "Canny 低阈值：", fg="#333333")
+        self._lbl_canny_low.pack(anchor=tk.W, pady=(4, 0))
+        tk.Scale(self._param_canny_low, from_=0, to=255, orient=tk.HORIZONTAL,
+                 variable=self.canny_low).pack(fill=tk.X)
+
+        # Canny 高阈值
+        self._param_canny_high = tk.Frame(param_frame)
+        self._lbl_canny_high = make_label(self._param_canny_high, "Canny 高阈值：", fg="#333333")
+        self._lbl_canny_high.pack(anchor=tk.W, pady=(8, 0))
+        tk.Scale(self._param_canny_high, from_=0, to=255, orient=tk.HORIZONTAL,
+                 variable=self.canny_high).pack(fill=tk.X)
+
+        # CLAHE 对比度限制
+        self._param_clahe = tk.Frame(param_frame)
+        self._lbl_clahe = make_label(self._param_clahe, "CLAHE 对比度限制：", fg="#333333")
+        self._lbl_clahe.pack(anchor=tk.W, pady=(8, 0))
+        tk.Scale(self._param_clahe, from_=1.0, to=5.0, resolution=0.5,
+                 orient=tk.HORIZONTAL, variable=self.clahe_clip).pack(fill=tk.X)
+
+        # 参数可见性 + 标签文字映射
+        self._param_map = {
+            "blur":   {"mean", "gaussian", "median", "bilateral", "unsharp",
+                       "erode", "dilate", "opening", "closing", "beauty"},
+            "bright": {"beauty", "contrast"},
+            "contrast": {"contrast"},
+            "soft":   {"skin_soft"},
+            "eye":    {"eye_enhance"},
+            "canny_low":   {"canny"},
+            "canny_high":  {"canny"},
+            "clahe":       {"clahe"},
+        }
+        self._param_widgets = {
+            "blur":       self._param_blur,
+            "bright":     self._param_bright,
+            "contrast":   self._param_contrast,
+            "soft":       self._param_soft,
+            "eye":        self._param_eye,
+            "canny_low":  self._param_canny_low,
+            "canny_high": self._param_canny_high,
+            "clahe":      self._param_clahe,
+        }
+        # 标签文字映射：操作名 → (参数key → 标签文字)
+        self._param_label_texts = {
+            "mean":      {"blur": "滤波核大小："},
+            "gaussian":  {"blur": "高斯核大小："},
+            "median":    {"blur": "滤波核大小："},
+            "bilateral": {"blur": "颜色标准差："},
+            "unsharp":   {"blur": "锐化强度："},
+            "erode":     {"blur": "结构元素大小："},
+            "dilate":    {"blur": "结构元素大小："},
+            "opening":   {"blur": "结构元素大小："},
+            "closing":   {"blur": "结构元素大小："},
+            "beauty":    {"blur": "磨皮强度：", "bright": "亮度提升："},
+            "contrast":  {"contrast": "对比度系数：", "bright": "亮度偏移："},
+            "skin_soft": {"soft": "柔和度："},
+            "eye_enhance": {"eye": "眼部增强："},
+            "canny":     {"canny_low": "Canny 低阈值：", "canny_high": "Canny 高阈值："},
+            "clahe":     {"clahe": "CLAHE 对比度限制："},
+        }
+        # 标签 widget 引用
+        self._param_labels = {
+            "blur":       self._lbl_blur,
+            "bright":     self._lbl_bright,
+            "contrast":   self._lbl_contrast,
+            "soft":       self._lbl_soft,
+            "eye":        self._lbl_eye,
+            "canny_low":  self._lbl_canny_low,
+            "canny_high": self._lbl_canny_high,
+            "clahe":      self._lbl_clahe,
+        }
+
+        # 监听操作变化，动态显示/隐藏参数
+        self.operation.trace_add("write", self._on_operation_changed)
+        # 初始调用一次，根据默认值 "none" 隐藏所有
+        self._on_operation_changed()
+
+        # 底部留白
         tk.Label(control_frame, text="").pack(pady=10)
 
         # =========================
@@ -240,22 +312,27 @@ class FaceBeautyApp:
         title_frame = tk.Frame(display_frame)
         title_frame.pack(fill=tk.X, pady=(0, 8))
 
-        tk.Label(title_frame, text="图像显示区", font=("微软雅黑", 13, "bold")).pack(anchor=tk.W)
-        tk.Label(title_frame, text="左侧为原图，右侧为处理结果", fg="gray").pack(anchor=tk.W)
+        make_label(title_frame, "图像显示区", size=14, fg="#333333",
+                   bold=True).pack(anchor=tk.W)
+        make_label(title_frame, "左侧为原图，右侧为处理结果",
+                   fg="#999999").pack(anchor=tk.W)
 
         image_frame = tk.Frame(display_frame)
         image_frame.pack(fill=tk.BOTH, expand=True)
 
-        original_box = tk.LabelFrame(image_frame, text="原图", padx=5, pady=5)
+        # 原图 / 结果图 LabelFrame 改用 Frame + 渲染标题
+        original_box, _ = make_label_frame(image_frame, "原图",
+                                           relief=tk.GROOVE, bd=2, padx=5, pady=5)
         original_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        processed_box = tk.LabelFrame(image_frame, text="处理结果", padx=5, pady=5)
+        processed_box, _ = make_label_frame(image_frame, "处理结果",
+                                            relief=tk.GROOVE, bd=2, padx=5, pady=5)
         processed_box.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-        self.label_original = tk.Label(original_box, text="原图显示区", bd=1, relief=tk.SUNKEN)
+        self.label_original = tk.Label(original_box, bd=1, relief=tk.SUNKEN)
         self.label_original.pack(fill=tk.BOTH, expand=True)
 
-        self.label_processed = tk.Label(processed_box, text="处理后显示区", bd=1, relief=tk.SUNKEN)
+        self.label_processed = tk.Label(processed_box, bd=1, relief=tk.SUNKEN)
         self.label_processed.pack(fill=tk.BOTH, expand=True)
 
     def _on_mousewheel(self, event):
@@ -265,10 +342,42 @@ class FaceBeautyApp:
         except Exception:
             pass
 
-    def on_template_selected(self, event=None):
-        """选择内置模板后自动切换到内置模板来源"""
-        self.makeup_source.set("builtin")
-        self._update_template_preview()
+    def _on_operation_changed(self, *_args):
+        """根据当前所选操作，显示/隐藏参数区 + 更新标签文字"""
+        op = self.operation.get()
+        all_keys = ["blur", "bright", "contrast", "soft", "eye",
+                     "canny_low", "canny_high", "clahe"]
+
+        any_visible = False
+        op_labels = self._param_label_texts.get(op, {})
+
+        # 先确定是否有可见参数
+        for key in all_keys:
+            if op in self._param_map[key]:
+                any_visible = True
+                break
+
+        # 先控制整个参数区的显隐
+        if any_visible:
+            self._param_frame.pack(fill=tk.X, pady=6)
+        else:
+            self._param_frame.pack_forget()
+            return
+
+        # 再逐行控制（此时父容器已可见）
+        for key in all_keys:
+            frame = self._param_widgets[key]
+            label = self._param_labels[key]
+            if op in self._param_map[key]:
+                # 更新标签文字（每操作的专有名词）
+                txt = op_labels.get(key, None)
+                if txt:
+                    photo, _, _ = render_photo(txt, fg="#333333")
+                    label.configure(image=photo)
+                    label.image = photo
+                frame.pack(fill=tk.X, pady=(0, 0))
+            else:
+                frame.pack_forget()
 
     def load_image(self):
         """加载图像文件"""
@@ -344,39 +453,44 @@ class FaceBeautyApp:
                 tpl = self._get_selected_builtin_template()
                 if tpl is not None:
                     preview_img = image_io.load_image(tpl["path"])
-                    self.template_info_label.configure(
-                        text=f"当前：内置模板\n名称：{tpl['name']}\n分类：{tpl['category']}",
-                        fg="blue"
-                    )
+                    txt = f"当前：内置模板\n名称：{tpl['name']}\n分类：{tpl['category']}"
+                    clr = "#0000FF"
                 else:
-                    self.template_info_label.configure(
-                        text="当前：内置模板\n未找到模板",
-                        fg="red"
-                    )
+                    txt = "当前：内置模板\n未找到模板"
+                    clr = "#FF0000"
 
             else:
                 if self.custom_makeup_path:
                     preview_img = image_io.load_image(self.custom_makeup_path)
-                    self.template_info_label.configure(
-                        text=f"当前：自定义模板\n路径：{self.custom_makeup_path}",
-                        fg="green"
-                    )
+                    txt = f"当前：自定义模板\n路径：{self.custom_makeup_path}"
+                    clr = "#008000"
                 else:
-                    self.template_info_label.configure(
-                        text="当前：自定义模板\n尚未选择文件",
-                        fg="red"
-                    )
+                    txt = "当前：自定义模板\n尚未选择文件"
+                    clr = "#FF0000"
+
+            # 渲染文字为图片更新标签
+            self._update_info_label(txt, clr)
 
             if preview_img is not None:
                 preview_img = utils.resize_for_display(preview_img, max_size=(160, 160))
                 self.template_preview_photo = ImageTk.PhotoImage(image=utils.cv2_to_pil(preview_img))
-                self.template_preview_label.configure(image=self.template_preview_photo, text="")
+                self.template_preview_label.configure(image=self.template_preview_photo)
             else:
-                self.template_preview_label.configure(image="", text="模板预览区")
+                _ph, _, _ = render_photo("模板预览区", fg="#999999")
+                self._template_placeholder = _ph
+                self.template_preview_label.configure(image=self._template_placeholder)
 
         except Exception as exc:
-            self.template_preview_label.configure(image="", text="模板预览失败")
-            self.template_info_label.configure(text=f"模板加载失败：{exc}", fg="red")
+            _ph, _, _ = render_photo("模板预览失败", fg="#FF0000")
+            self._template_placeholder = _ph
+            self.template_preview_label.configure(image=self._template_placeholder)
+            self._update_info_label(f"模板加载失败：{exc}", "#FF0000")
+
+    def _update_info_label(self, text, color="#000000"):
+        """用渲染文字更新 template_info_label（图片标签无法 configure(text=...)）"""
+        photo, _, _ = render_photo(text, size=10, fg=color, pad_w=2, pad_h=2)
+        self.template_info_label.configure(image=photo)
+        self.template_info_label.image = photo
 
     def _get_makeup_image_for_beautygan(self):
         """根据当前设置获取BeautyGAN需要的妆容参考图"""
@@ -415,6 +529,9 @@ class FaceBeautyApp:
                 contrast=self.contrast.get(),
                 softness=self.softness.get(),
                 eye_enhance=self.eye_enhance.get(),
+                canny_low=self.canny_low.get(),
+                canny_high=self.canny_high.get(),
+                clahe_clip=self.clahe_clip.get(),
                 makeup_image=makeup_img,
             )
 
