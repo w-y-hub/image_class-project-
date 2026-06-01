@@ -51,6 +51,9 @@ class FaceBeautyApp:
         else:
             self.template_name.set("")
 
+        # 选择内置模板时自动切换来源 + 刷新预览
+        self.template_name.trace_add("write", self._on_template_selected)
+
         # 构建用户界面
         self._build_ui()
 
@@ -148,9 +151,9 @@ class FaceBeautyApp:
         template_frame.pack(fill=tk.X, pady=6)
 
         make_radio(template_frame, "使用内置模板", self.makeup_source,
-                   "builtin").pack(anchor=tk.W)
+                   "builtin", command=self._update_template_preview).pack(anchor=tk.W)
         make_radio(template_frame, "使用自定义模板", self.makeup_source,
-                   "custom").pack(anchor=tk.W)
+                   "custom", command=self._update_template_preview).pack(anchor=tk.W)
 
         make_label(template_frame, "内置模板：", fg="#333333").pack(anchor=tk.W, pady=(8, 0))
         template_names = [tpl["name"] for tpl in self.templates] if self.templates else []
@@ -378,6 +381,11 @@ class FaceBeautyApp:
                 frame.pack(fill=tk.X, pady=(0, 0))
             else:
                 frame.pack_forget()
+
+    def _on_template_selected(self, *_args):
+        """从下拉菜单选择内置模板时，自动切回内置模板来源 + 刷新预览"""
+        self.makeup_source.set("builtin")
+        self._update_template_preview()
 
     def load_image(self):
         """加载图像文件"""

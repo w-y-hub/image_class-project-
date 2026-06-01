@@ -135,7 +135,8 @@ def make_button(parent, text, command=None, width=130, height=30,
 
 
 def make_radio(parent, text, variable, value, size=None,
-               fg="#000000", selected_fg="#0000CC", **kwargs):
+               fg="#000000", selected_fg="#0000CC",
+               command=None, **kwargs):
     """
     创建一个中文单选钮（可点击 Label + 图片渲染）。
     选中时左侧显示 ●，未选中时显示 ○。
@@ -160,8 +161,9 @@ def make_radio(parent, text, variable, value, size=None,
 
     def _on_click(event):
         variable.set(value)
-        # 更新外观
         lbl.configure(image=lbl.photo_selected)
+        if command:
+            command()
 
     def _trace_callback(*_args):
         if variable.get() == value:

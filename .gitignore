@@ -21,3 +21,4 @@ Thumbs.db
 
 # 模型文件（大二进制，独立管理）
 /modules/modelBeautyGAN/
+image/test.jpg
