@@ -1,4 +1,23 @@
-/modules/modelBeautyGAN/
-/modules/__pycache__/
+# Python
 __pycache__/
 *.pyc
+*.pyo
+
+# 虚拟环境
+.venv/
+venv/
+
+# IDE / 编辑器
+.idea/
+*.swp
+*.swo
+
+# 大文件（需用 git LFS 或按需下载）
+assets/fonts/
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 模型文件（大二进制，独立管理）
+/modules/modelBeautyGAN/
