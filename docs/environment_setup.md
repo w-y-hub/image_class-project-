@@ -29,7 +29,7 @@ uv --version
 
 ### 2. 创建虚拟环境并安装依赖
 
-项目已配置好 `pyproject.toml` 和 `requirements.txt`，只需一条命令：
+项目已配置好 `pyproject.toml`，只需一条命令：
 
 ```bash
 # 在项目根目录执行
@@ -63,7 +63,7 @@ uv run python main.py
 A: 首次运行需先执行 `uv sync` 安装依赖。直接 `uv run` 会自动处理。
 
 ### Q: 提示找不到 Python 3.11
-A: uv 会自动下载所需的 Python 版本（`uv python install 3.11`）。若手动安装，确保版本在 3.10–3.13 之间。
+A: uv 会自动下载所需的 Python 版本（`uv python install 3.11`）。若手动安装，确保版本在 3.10–3.12 之间（见 pyproject.toml）。
 
 ### Q: 需要添加新的依赖
 ```bash

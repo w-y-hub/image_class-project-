@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 from PIL import ImageTk
 
 from modules import image_io, utils, services, template_manager
@@ -338,6 +338,31 @@ class FaceBeautyApp:
         self.label_processed = tk.Label(processed_box, bd=1, relief=tk.SUNKEN)
         self.label_processed.pack(fill=tk.BOTH, expand=True)
 
+        # ===== 底部状态栏 + 进度条 =====
+        status_frame = tk.Frame(display_frame)
+        status_frame.pack(fill=tk.X, pady=(6, 0))
+
+        self._progress_bar = ttk.Progressbar(
+            status_frame, mode="indeterminate", length=200
+        )
+        self._progress_bar.pack(side=tk.RIGHT, padx=(8, 0))
+
+        self._status_label = tk.Label(
+            status_frame, text="就绪", anchor="w", fg="#666666", font=("TkDefaultFont", 9)
+        )
+        self._status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+    def _set_status(self, text, processing=False):
+        """更新底部状态文字，处理时显示进度条"""
+        self._status_label.configure(text=text)
+        if processing:
+            self._progress_bar.start(10)  # 每 10ms 步进一次
+            self._progress_bar.pack(side=tk.RIGHT, padx=(8, 0))
+        else:
+            self._progress_bar.stop()
+            self._progress_bar.pack_forget()
+        self.root.update_idletasks()
+
     def _on_mousewheel(self, event):
         """左侧控制面板鼠标滚轮滚动"""
         try:
@@ -395,11 +420,14 @@ class FaceBeautyApp:
         if not path:
             return
 
+        self._set_status("正在加载图片...", processing=True)
         try:
             self.original_image = image_io.load_image(path)
             self.processed_image = self.original_image.copy()
             self._update_display()
+            self._set_status(f"已加载: {path.split('/')[-1].split(chr(92))[-1]}")
         except Exception as exc:
+            self._set_status("加载失败")
             messagebox.showerror("加载失败", str(exc))
 
     def save_image(self):
@@ -418,6 +446,7 @@ class FaceBeautyApp:
         try:
             ok = image_io.save_image(path, self.processed_image)
             if ok:
+                self._set_status(f"已保存: {path.split('/')[-1].split(chr(92))[-1]}")
                 messagebox.showinfo("保存成功", f"已保存到：{path}")
             else:
                 messagebox.showerror("保存失败", "图像保存时发生错误")
@@ -428,6 +457,7 @@ class FaceBeautyApp:
         """重置图像到原始状态"""
         if self.original_image is None:
             return
+        self._set_status("已重置到原始状态")
         self.processed_image = self.original_image.copy()
         self._update_display()
 
@@ -522,12 +552,31 @@ class FaceBeautyApp:
             messagebox.showwarning("操作失败", "请先加载图片")
             return
 
-        try:
-            op = self.operation.get()
-            makeup_img = None
+        op = self.operation.get()
+        if op == "none":
+            # "无处理"直接重置
+            self.reset_image()
+            return
 
+        # 操作名映射（用于状态栏显示）
+        op_names = {
+            "mean": "均值滤波", "gaussian": "高斯滤波", "median": "中值滤波",
+            "bilateral": "双边滤波", "hist_eq": "直方图均衡化", "clahe": "CLAHE均衡化",
+            "laplacian": "拉普拉斯锐化", "unsharp": "USM锐化",
+            "sobel": "Sobel边缘检测", "canny": "Canny边缘检测",
+            "erode": "腐蚀", "dilate": "膨胀", "opening": "开运算", "closing": "闭运算",
+            "detect": "人脸检测", "beauty": "人脸磨皮", "skin_soft": "肤色柔和",
+            "contrast": "对比度增强", "eye_enhance": "眼部增强",
+            "beautygan": "妆造迁移(BeautyGAN)",
+        }
+        display_name = op_names.get(op, op)
+        self._set_status(f"正在处理: {display_name}...", processing=True)
+
+        try:
+            makeup_img = None
             if op == "beautygan":
                 makeup_img = self._get_makeup_image_for_beautygan()
+                self._set_status("BeautyGAN 推理中（首次需加载模型）...", processing=True)
 
             self.processed_image = services.apply_operation(
                 image=self.original_image,
@@ -544,8 +593,10 @@ class FaceBeautyApp:
             )
 
             self._update_display()
+            self._set_status(f"完成: {display_name}")
 
         except Exception as exc:
+            self._set_status("处理失败")
             messagebox.showerror("处理失败", str(exc))
 
     def _update_display(self):
