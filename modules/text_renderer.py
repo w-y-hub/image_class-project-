@@ -185,8 +185,9 @@ def make_option_menu(parent, items, textvariable, width=200, height=26,
     """
     size = size or _DEFAULT_SIZE
 
-    # 显示当前选中项的 Label
-    current_text = textvariable.get() or (items[0] if items else "")
+    # 显示当前选中项的 Label（空列表时显示提示）
+    current_text = (textvariable.get()
+                    or (items[0] if items else "无可选模板"))
     photo, _, _ = render_photo(f"▾ {current_text}", size=size, pad_w=6, pad_h=3,
                                min_w=width)
     lbl = tk.Label(parent, image=photo, cursor="hand2", **kwargs)
@@ -216,7 +217,7 @@ def make_option_menu(parent, items, textvariable, width=200, height=26,
             item_lbl.image = item_photo
             item_lbl.pack(fill=tk.X)
 
-            def _select(i=item, lb=item_lbl):
+            def _select(event, i=item, lb=item_lbl):
                 textvariable.set(i)
                 _update_display()
                 popup.destroy()

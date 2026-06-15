@@ -1,3 +1,11 @@
+import os
+import sys
+
+# 确保项目根目录在 sys.path，兼容直接运行 python modules/gui.py
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, _PROJECT_ROOT)
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from PIL import ImageTk
@@ -409,7 +417,8 @@ class FaceBeautyApp:
 
     def _on_template_selected(self, *_args):
         """从下拉菜单选择内置模板时，自动切回内置模板来源 + 刷新预览"""
-        self.makeup_source.set("builtin")
+        if self.makeup_source.get() != "builtin":
+            self.makeup_source.set("builtin")
         self._update_template_preview()
 
     def load_image(self):
@@ -427,13 +436,14 @@ class FaceBeautyApp:
             self._update_display()
             self._set_status(f"已加载: {path.split('/')[-1].split(chr(92))[-1]}")
         except Exception as exc:
-            self._set_status("加载失败")
-            messagebox.showerror("加载失败", str(exc))
+            err_msg = str(exc) or type(exc).__name__
+            self._set_status(f"加载失败：{err_msg}")
+            self._safe_messagebox(messagebox.showerror, "加载失败", err_msg)
 
     def save_image(self):
         """保存处理后的图像"""
         if self.processed_image is None:
-            messagebox.showwarning("保存失败", "请先加载并处理图片")
+            self._safe_messagebox(messagebox.showwarning, "保存失败", "请先加载并处理图片")
             return
 
         path = filedialog.asksaveasfilename(
@@ -447,11 +457,12 @@ class FaceBeautyApp:
             ok = image_io.save_image(path, self.processed_image)
             if ok:
                 self._set_status(f"已保存: {path.split('/')[-1].split(chr(92))[-1]}")
-                messagebox.showinfo("保存成功", f"已保存到：{path}")
+                self._safe_messagebox(messagebox.showinfo, "保存成功", f"已保存到：{path}")
             else:
-                messagebox.showerror("保存失败", "图像保存时发生错误")
+                self._safe_messagebox(messagebox.showerror, "保存失败", "图像保存时发生错误")
         except Exception as exc:
-            messagebox.showerror("保存失败", str(exc))
+            err_msg = str(exc) or type(exc).__name__
+            self._safe_messagebox(messagebox.showerror, "保存失败", err_msg)
 
     def reset_image(self):
         """重置图像到原始状态"""
@@ -519,16 +530,31 @@ class FaceBeautyApp:
                 self.template_preview_label.configure(image=self._template_placeholder)
 
         except Exception as exc:
-            _ph, _, _ = render_photo("模板预览失败", fg="#FF0000")
-            self._template_placeholder = _ph
-            self.template_preview_label.configure(image=self._template_placeholder)
-            self._update_info_label(f"模板加载失败：{exc}", "#FF0000")
+            err_msg = str(exc) or type(exc).__name__
+            try:
+                _ph, _, _ = render_photo("模板预览失败", fg="#FF0000")
+                self._template_placeholder = _ph
+                self.template_preview_label.configure(image=self._template_placeholder)
+            except Exception:
+                self.template_preview_label.configure(image="", text="预览失败",
+                                                       fg="red", font=("TkDefaultFont", 9))
+            self._update_info_label(f"模板加载失败：{err_msg}", "#FF0000")
 
     def _update_info_label(self, text, color="#000000"):
-        """用渲染文字更新 template_info_label（图片标签无法 configure(text=...)）"""
-        photo, _, _ = render_photo(text, size=10, fg=color, pad_w=2, pad_h=2)
-        self.template_info_label.configure(image=photo)
-        self.template_info_label.image = photo
+        """用渲染文字更新 template_info_label，内置容错兜底"""
+        if not text or not text.strip():
+            text = "(无详细信息)"
+        try:
+            photo, _, _ = render_photo(text, size=10, fg=color, pad_w=2, pad_h=2)
+            self.template_info_label.configure(image=photo)
+            self.template_info_label.image = photo
+        except Exception:
+            # 渲染失败时回退到 tk 原生 Label（可能中文显示乱码但不影响诊断）
+            self.template_info_label.configure(
+                image="", text=text, fg=color,
+                font=("TkDefaultFont", 10),
+                wraplength=260, justify=tk.LEFT, anchor="w"
+            )
 
     def _get_makeup_image_for_beautygan(self):
         """根据当前设置获取BeautyGAN需要的妆容参考图"""
@@ -546,17 +572,110 @@ class FaceBeautyApp:
         else:
             raise ValueError("未知的妆造模板来源")
 
+    def _safe_messagebox(self, fn, title, message):
+        """用渲染文字对话框替代原生 messagebox（中文不乱码 + 容错兜底）"""
+        try:
+            if not self.root.winfo_exists():
+                print(f"[{title}] {message}")
+                return
+
+            dlg = tk.Toplevel(self.root)
+            dlg.title("")
+            dlg.resizable(False, False)
+            dlg.transient(self.root)
+            dlg.grab_set()
+
+            # 中/英文标题映射
+            title_map = {
+                messagebox.showerror:   ("错误", "Error"),
+                messagebox.showwarning: ("警告", "Warning"),
+                messagebox.showinfo:    ("提示", "Info"),
+            }
+            cn_title, en_title = title_map.get(fn, ("提示", "Info"))
+            accent = {"错误":"#D32F2F", "警告":"#F57C00", "提示":"#1976D2"}.get(cn_title, "#333333")
+
+            try:
+                # ---- 尝试渲染中文版 ----
+                title_photo, _, _ = render_photo(cn_title, size=13, fg=accent, bold=True)
+                msg_photo, _, _ = render_photo(message, size=11, fg="#333333", pad_w=8, pad_h=4)
+
+                title_frame = tk.Frame(dlg)
+                title_frame.pack(fill=tk.X, padx=12, pady=(12, 4))
+                tk.Label(title_frame, image=title_photo).pack(side=tk.LEFT)
+                title_frame._img = title_photo
+
+                msg_frame = tk.Frame(dlg)
+                msg_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+                tk.Label(msg_frame, image=msg_photo, wraplength=360).pack()
+                msg_frame._img = msg_photo
+
+                btn_text = "确定"
+            except Exception:
+                # ---- 渲染失败 → 降级为英文版（无需中文字体） ----
+                title_frame = tk.Frame(dlg)
+                title_frame.pack(fill=tk.X, padx=12, pady=(12, 4))
+                tk.Label(title_frame, text=f" {en_title}", fg=accent,
+                         font=("TkDefaultFont", 12, "bold")).pack(side=tk.LEFT)
+
+                msg_frame = tk.Frame(dlg)
+                msg_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=(0, 8))
+                tk.Label(msg_frame, text=message, fg="#333333",
+                         font=("TkDefaultFont", 10), wraplength=360,
+                         justify=tk.LEFT).pack()
+                btn_text = "OK"
+
+            # 确定按钮
+            btn_frame = tk.Frame(dlg)
+            btn_frame.pack(pady=(0, 10))
+            btn = make_button(btn_frame, btn_text, dlg.destroy, width=80, height=28)
+            btn.pack()
+
+            # 居中
+            dlg.update_idletasks()
+            rw = self.root.winfo_x()
+            rh = self.root.winfo_y()
+            rww = self.root.winfo_width()
+            rwh = self.root.winfo_height()
+            dw = dlg.winfo_width()
+            dh = dlg.winfo_height()
+            dlg.geometry(f"+{rw + (rww - dw) // 2}+{rh + (rwh - dh) // 2}")
+            dlg.wait_window()
+        except Exception:
+            print(f"[{title}] {message}")
+
     def apply_operation(self):
         """根据选择的处理类型应用图像处理（统一走services层）"""
         if self.original_image is None:
-            messagebox.showwarning("操作失败", "请先加载图片")
+            self._safe_messagebox(messagebox.showwarning, "操作失败", "请先加载图片")
             return
 
         op = self.operation.get()
         if op == "none":
-            # "无处理"直接重置
             self.reset_image()
             return
+
+        # 妆造迁移前置检查：必须有有效模板
+        if op == "beautygan":
+            if self.makeup_source.get() == "builtin":
+                tpl = self._get_selected_builtin_template()
+                if tpl is None:
+                    print(f"[debug] templeta check fail: name='{self.template_name.get()}' "
+                          f"templates={[t['name'] for t in self.templates]}")
+                    self._safe_messagebox(messagebox.showwarning, "缺少模板",
+                                           "请先在「妆造模板设置」中选择一个有效的内置模板")
+                    return
+                # 加载妆容参考图（确保路径正确，能正常读取）
+                try:
+                    _test = image_io.load_image(tpl["path"])
+                except Exception as e:
+                    print(f"[debug] template image load fail: {tpl['path']} -> {e}")
+                    self._safe_messagebox(messagebox.showerror, "模板错误",
+                                           f"模板图片无法读取：{tpl['name']}\n文件可能已损坏或缺失")
+                    return
+            if self.makeup_source.get() == "custom" and not self.custom_makeup_path:
+                self._safe_messagebox(messagebox.showwarning, "缺少模板",
+                                       "请先在「妆造模板设置」中选择自定义模板图片")
+                return
 
         # 操作名映射（用于状态栏显示）
         op_names = {
@@ -596,8 +715,9 @@ class FaceBeautyApp:
             self._set_status(f"完成: {display_name}")
 
         except Exception as exc:
-            self._set_status("处理失败")
-            messagebox.showerror("处理失败", str(exc))
+            err_msg = str(exc) or type(exc).__name__
+            self._set_status(f"处理失败：{err_msg}")
+            self._safe_messagebox(messagebox.showerror, "处理失败", err_msg)
 
     def _update_display(self):
         """更新图像显示"""
